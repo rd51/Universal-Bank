@@ -17,9 +17,9 @@ st.set_page_config(
 @st.cache_data
 def load_data():
     try:
-        return pd.read_excel("data/UniversalBank.xlsx")
+        return pd.read_csv("data/UniversalBank.csv")
     except FileNotFoundError:
-        st.error("❌ Data file not found. Please ensure 'data/UniversalBank.xlsx' exists.")
+        st.error("❌ Data file not found. Please ensure 'data/UniversalBank.csv' exists.")
         st.stop()
     except Exception as e:
         st.error(f"❌ Error loading data: {str(e)}")

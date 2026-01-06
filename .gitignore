@@ -27,7 +27,7 @@ wheels/
 *.egg
 
 # Streamlit
-.streamlit/
+# .streamlit/  # Commented out to allow config.toml to be tracked
 
 # IDE
 .vscode/

@@ -20,9 +20,10 @@ def load_data():
     try:
         # Try multiple paths to handle different deployment environments
         paths = [
-            "data/UniversalBank.csv",
-            "./data/UniversalBank.csv",
-            os.path.join(os.path.dirname(__file__), "data/UniversalBank.csv")
+            "UniversalBank with description 2.0.csv",  # Root directory
+            "data/UniversalBank.csv",  # Data folder
+            "./data/UniversalBank.csv",  # Relative path
+            os.path.join(os.path.dirname(__file__), "UniversalBank with description 2.0.csv")  # Absolute path
         ]
         
         for path in paths:

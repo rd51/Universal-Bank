@@ -53,15 +53,20 @@ df['Latent_Class'] = gmm.fit_predict(scaled)
 
 # Sidebar Filters
 st.sidebar.header("📊 Filters")
+
+# Get unique values and remove NaN
+income_options = [x for x in df['Income_Band'].unique() if pd.notna(x)]
+class_options = [x for x in df['Latent_Class'].unique() if pd.notna(x)]
+
 income_filter = st.sidebar.multiselect(
     "Income Band",
-    options=sorted(df['Income_Band'].unique()),
-    default=sorted(df['Income_Band'].unique())
+    options=income_options,
+    default=income_options
 )
 class_filter = st.sidebar.multiselect(
     "Customer Segment (Latent Class)",
-    options=sorted(df['Latent_Class'].unique()),
-    default=sorted(df['Latent_Class'].unique())
+    options=sorted(class_options),
+    default=sorted(class_options)
 )
 
 # Apply filters

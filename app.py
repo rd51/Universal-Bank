@@ -1,37 +1,32 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+import numpy as np
 import os
+from sklearn.mixture import GaussianMixture
+from mlxtend.frequent_patterns import apriori, association_rules
+from sklearn.preprocessing import StandardScaler
 
-# -----------------------------
-# Page Config
-# -----------------------------
 st.set_page_config(
-    page_title="Universal Bank Dashboard",
-    page_icon="🏦",
-    layout="wide"
+    page_title="Universal Bank BI Dashboard",
+    layout="wide",
+    page_icon="🏦"
 )
 
-# -----------------------------
-# Load Data
-# -----------------------------
+# Load Data with multiple path support
 @st.cache_data
 def load_data():
     try:
-        # Try multiple paths to handle different deployment environments
         paths = [
-            "UniversalBank with description 2.0.csv",  # Root directory
-            "data/UniversalBank.csv",  # Data folder
-            "./data/UniversalBank.csv",  # Relative path
-            os.path.join(os.path.dirname(__file__), "UniversalBank with description 2.0.csv")  # Absolute path
+            "UniversalBank with description 2.0.csv",
+            "./UniversalBank with description 2.0.csv",
+            os.path.join(os.path.dirname(__file__), "UniversalBank with description 2.0.csv")
         ]
         
         for path in paths:
             if os.path.exists(path):
                 return pd.read_csv(path)
         
-        # If no file found, raise error with available paths info
-        st.error("❌ Data file not found. Tried paths: " + ", ".join(paths))
+        st.error("❌ Dataset not found. Please ensure 'UniversalBank with description 2.0.csv' exists in the project root.")
         st.stop()
     except Exception as e:
         st.error(f"❌ Error loading data: {str(e)}")
@@ -39,131 +34,92 @@ def load_data():
 
 df = load_data()
 
-# -----------------------------
+st.title("🏦 Universal Bank - BI Dashboard")
+st.markdown("*Advanced Analytics: Customer Segmentation & Cross-sell Insights*")
+
+# Feature Engineering
+df['Income_Band'] = pd.cut(df['Income'], bins=[0, 50, 100, 200],
+                           labels=['Low', 'Medium', 'High'])
+df['Age_Group'] = pd.cut(df['Age'], bins=[20, 35, 55, 100],
+                         labels=['Young', 'Mid', 'Senior'])
+df['Total_Products'] = df[['Securities Account', 'CD Account', 'Online', 'CreditCard']].sum(axis=1)
+df['Digital_Flag'] = df['Online'] + df['CreditCard']
+
+# Latent Class Analysis
+features = df[['Income', 'CCAvg', 'Age', 'Education', 'Total_Products', 'Digital_Flag']]
+scaled = StandardScaler().fit_transform(features)
+gmm = GaussianMixture(n_components=4, random_state=42)
+df['Latent_Class'] = gmm.fit_predict(scaled)
+
 # Sidebar Filters
-# -----------------------------
-st.sidebar.header("Filters")
-
-education_filter = st.sidebar.multiselect(
-    "Education Level",
-    options=df["Education"].unique(),
-    default=df["Education"].unique()
+st.sidebar.header("📊 Filters")
+income_filter = st.sidebar.multiselect(
+    "Income Band",
+    options=sorted(df['Income_Band'].unique()),
+    default=sorted(df['Income_Band'].unique())
+)
+class_filter = st.sidebar.multiselect(
+    "Customer Segment (Latent Class)",
+    options=sorted(df['Latent_Class'].unique()),
+    default=sorted(df['Latent_Class'].unique())
 )
 
-loan_filter = st.sidebar.selectbox(
-    "Personal Loan",
-    options=["All", "Accepted", "Not Accepted"]
-)
-
-# Apply filters to dataset
-filtered_df = df[df["Education"].isin(education_filter)]
-
-if loan_filter == "Accepted":
-    filtered_df = filtered_df[filtered_df["Personal Loan"] == 1]
-elif loan_filter == "Not Accepted":
-    filtered_df = filtered_df[filtered_df["Personal Loan"] == 0]
+# Apply filters
+filtered = df[
+    (df['Income_Band'].isin(income_filter)) &
+    (df['Latent_Class'].isin(class_filter))
+]
 
 # Check if filtered data is empty
-if filtered_df.empty:
+if filtered.empty:
     st.warning("⚠️ No data matches the selected filters. Please adjust your selections.")
     st.stop()
 
-# -----------------------------
-# KPIs - Calculate key metrics
-# -----------------------------
-total_customers = filtered_df.shape[0]
-loan_acceptance_rate = (
-    filtered_df["Personal Loan"].mean() * 100
-)  # Percentage of customers who accepted personal loan
-loan_acceptors = (filtered_df["Personal Loan"] == 1).sum()
-
-avg_income = filtered_df["Income"].mean()  # Average income in thousands
-avg_age = filtered_df["Age"].mean()  # Average age in years
-
-st.title("🏦 Universal Bank – Personal Loan Dashboard")
-
+# KPIs
+st.subheader("📈 Key Performance Indicators")
 col1, col2, col3, col4 = st.columns(4)
-
-col1.metric("Total Customers", f"{total_customers:,}")
-col2.metric("Loan Acceptance Rate (%)", f"{loan_acceptance_rate:.2f}")
-col3.metric("Average Income ($k)", f"{avg_income:.2f}")
-col4.metric("Average Age (years)", f"{avg_age:.1f}")
+col1.metric("Total Customers", f"{len(filtered):,}")
+col2.metric("Loan Conversion Rate (%)", f"{round(filtered['Personal Loan'].mean()*100, 2):.2f}")
+col3.metric("Average Income ($k)", f"{round(filtered['Income'].mean(), 2):.2f}")
+col4.metric("Digital Adoption (%)", f"{round(filtered['Digital_Flag'].mean()*100, 2):.2f}")
 
 st.divider()
 
-# -----------------------------
-# Charts
-# -----------------------------
-col1, col2 = st.columns(2)
+# Association Rules
+st.subheader("🔗 Product Association Rules (Cross-sell Opportunities)")
+try:
+    basket = filtered[['Securities Account', 'CD Account', 'Online', 'CreditCard', 'Personal Loan']].copy()
+    basket = basket.astype(bool)
+    
+    freq = apriori(basket, min_support=0.05, use_colnames=True)
+    
+    if len(freq) > 0:
+        rules = association_rules(freq, metric="lift", min_threshold=0.5)
+        
+        if len(rules) > 0:
+            rules_display = rules.sort_values("lift", ascending=False)[['antecedents', 'consequents', 'support', 'confidence', 'lift']].head(10)
+            st.dataframe(rules_display, use_container_width=True)
+        else:
+            st.info("No association rules found with current filters. Try adjusting the minimum support threshold.")
+    else:
+        st.info("Insufficient data for association analysis. Please expand your filter selection.")
+except Exception as e:
+    st.warning(f"Association rules analysis skipped: {str(e)}")
 
-# Income Distribution
-fig_income = px.histogram(
-    filtered_df,
-    x="Income",
-    nbins=30,
-    title="Income Distribution",
-    color="Personal Loan"
-)
-col1.plotly_chart(fig_income, use_container_width=True)
+st.divider()
 
-# Age Distribution
-fig_age = px.histogram(
-    filtered_df,
-    x="Age",
-    nbins=30,
-    title="Age Distribution",
-    color="Personal Loan"
-)
-col2.plotly_chart(fig_age, use_container_width=True)
+# Segment Analysis
+st.subheader("📊 Loan Conversion by Customer Segment")
+segment_analysis = filtered.groupby('Latent_Class')['Personal Loan'].agg(['sum', 'count', 'mean']).reset_index()
+segment_analysis.columns = ['Segment', 'Loans', 'Customers', 'Conversion_Rate']
+segment_analysis['Conversion_Rate'] = (segment_analysis['Conversion_Rate'] * 100).round(2)
 
-# -----------------------------
-# Loan Acceptance by Education
-# -----------------------------
-edu_loan = (
-    filtered_df
-    .groupby("Education")["Personal Loan"]
-    .mean()
-    .reset_index()
-)
+st.bar_chart(filtered.groupby('Latent_Class')['Personal Loan'].mean())
 
-fig_edu = px.bar(
-    edu_loan,
-    x="Education",
-    y="Personal Loan",
-    title="Loan Acceptance Rate by Education",
-    labels={"Personal Loan": "Acceptance Rate"}
-)
-st.plotly_chart(fig_edu, use_container_width=True)
+st.markdown("---")
+st.subheader("📋 Detailed Segment Analysis")
+st.dataframe(segment_analysis, use_container_width=True)
 
-# -----------------------------
-# Credit & Online Behavior
-# -----------------------------
-col1, col2 = st.columns(2)
-
-fig_cc = px.box(
-    filtered_df,
-    x="Personal Loan",
-    y="CCAvg",
-    title="Credit Card Average Spend vs Loan"
-)
-col1.plotly_chart(fig_cc, use_container_width=True)
-
-# Prepare data for online banking chart with meaningful labels
-online_loan_df = filtered_df.copy()
-online_loan_df["Loan Status"] = online_loan_df["Personal Loan"].map({1: "Accepted", 0: "Rejected"})
-
-fig_online = px.bar(
-    online_loan_df,
-    x="Online",
-    color="Loan Status",
-    title="Online Banking Usage vs Loan Acceptance",
-    labels={"Online": "Online Banking User"},
-    color_discrete_map={"Accepted": "#2ecc71", "Rejected": "#e74c3c"}
-)
-col2.plotly_chart(fig_online, use_container_width=True)
-
-# -----------------------------
-# Raw Data
-# -----------------------------
-with st.expander("📄 View Raw Data"):
-    st.dataframe(filtered_df)
+# Raw Data Explorer
+with st.expander("🔍 View Raw Data"):
+    st.dataframe(filtered, use_container_width=True)

@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import os
 
 # -----------------------------
 # Page Config
@@ -17,9 +18,19 @@ st.set_page_config(
 @st.cache_data
 def load_data():
     try:
-        return pd.read_csv("data/UniversalBank.csv")
-    except FileNotFoundError:
-        st.error("❌ Data file not found. Please ensure 'data/UniversalBank.csv' exists.")
+        # Try multiple paths to handle different deployment environments
+        paths = [
+            "data/UniversalBank.csv",
+            "./data/UniversalBank.csv",
+            os.path.join(os.path.dirname(__file__), "data/UniversalBank.csv")
+        ]
+        
+        for path in paths:
+            if os.path.exists(path):
+                return pd.read_csv(path)
+        
+        # If no file found, raise error with available paths info
+        st.error("❌ Data file not found. Tried paths: " + ", ".join(paths))
         st.stop()
     except Exception as e:
         st.error(f"❌ Error loading data: {str(e)}")
